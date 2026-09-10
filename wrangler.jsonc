@@ -7,7 +7,7 @@
     {
       "binding": "DB",
       "database_name": "payment-rescue-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "36ed78a3-3a0f-4be3-ad92-93626c5d82a5"
     }
   ],
   "secrets": {
