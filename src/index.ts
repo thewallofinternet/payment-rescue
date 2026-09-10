@@ -126,6 +126,24 @@ export default {
       const result = await sendTestEmail(env, to);
       return json({ sent: result.ok, resend: result.body }, result.ok ? 200 : 502);
     }
+    if (request.method === "GET" && url.pathname === "/test-failure") {
+      const to = url.searchParams.get("to");
+      if (!to) return json({ error: "Add your email with ?to=your@email.com" }, 400);
+      if (!env.RESEND_API_KEY) return json({ error: "RESEND_API_KEY is not configured" }, 500);
+      const eventId = `evt_test_${Date.now()}`;
+      const invoice = {
+        id: `in_test_${Date.now()}`,
+        customer: "cus_test_payment_rescue",
+        customer_email: to,
+        amount_due: 2999,
+        currency: "eur"
+      };
+      const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO failed_payments (stripe_event_id, customer_id, customer_email, invoice_id, amount, currency, failure_code) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .bind(eventId, invoice.customer, to, invoice.id, invoice.amount_due, invoice.currency, "card_declined")
+        .run();
+      const emailSent = inserted.meta?.changes === 1 ? await sendRecoveryEmail(env, to, invoice, url.origin) : false;
+      return json({ simulated: true, inserted: inserted.meta?.changes === 1, email_sent: emailSent, invoice_id: invoice.id });
+    }
     if (request.method === "GET" && url.pathname === "/dashboard") return new Response(dashboardHtml(await dashboardData(env)), { headers: { "content-type": "text/html; charset=utf-8" } });
     if (request.method === "GET" && url.pathname === "/api/dashboard") return json(await dashboardData(env));
     if (request.method === "GET" && url.pathname === "/recover") {
