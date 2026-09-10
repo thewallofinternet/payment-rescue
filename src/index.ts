@@ -41,6 +41,23 @@ async function sendRecoveryEmail(env: Env, to: string, invoice: any, origin: str
   return response.ok;
 }
 
+async function sendTestEmail(env: Env, to: string) {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from: "Payment Rescue <onboarding@resend.dev>",
+      to: [to],
+      subject: "Payment Rescue test email",
+      html: "<div style=\"font-family:Arial,sans-serif;padding:24px\"><h2>Payment Rescue</h2><p>Success! Your Payment Rescue Resend integration is working.</p></div>"
+    })
+  });
+  return { ok: response.ok, body: await response.text() };
+}
+
 function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let result = 0;
@@ -102,6 +119,13 @@ export default {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") return new Response("<h1>Payment Rescue</h1><p>MVP backend is running.</p>", { headers: { "content-type": "text/html" } });
     if (request.method === "GET" && url.pathname === "/health") return json({ ok: true });
+    if (request.method === "GET" && url.pathname === "/test-email") {
+      const to = url.searchParams.get("to");
+      if (!to) return json({ error: "Add your email with ?to=your@email.com" }, 400);
+      if (!env.RESEND_API_KEY) return json({ error: "RESEND_API_KEY is not configured" }, 500);
+      const result = await sendTestEmail(env, to);
+      return json({ sent: result.ok, resend: result.body }, result.ok ? 200 : 502);
+    }
     if (request.method === "GET" && url.pathname === "/dashboard") return new Response(dashboardHtml(await dashboardData(env)), { headers: { "content-type": "text/html; charset=utf-8" } });
     if (request.method === "GET" && url.pathname === "/api/dashboard") return json(await dashboardData(env));
     if (request.method === "GET" && url.pathname === "/recover") {
