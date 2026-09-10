@@ -62,7 +62,7 @@ async function verifyStripeSignature(body: string, signature: string, secret: st
   return signatures.some((sig) => timingSafeEqual(expected, hexToBytes(sig)));
 }
 
-async function dashboard(env: Env) {
+async function dashboardData(env: Env) {
   const total = await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM failed_payments"
   ).first<{ n: number }>();
@@ -75,11 +75,57 @@ async function dashboard(env: Env) {
     "SELECT COALESCE(SUM(amount),0) AS n FROM failed_payments WHERE recovered_at IS NOT NULL"
   ).first<{ n: number }>();
 
-  return json({
+  const rows = await env.DB.prepare(`
+    SELECT customer_email, amount, currency, failure_code, created_at, recovered_at
+    FROM failed_payments
+    ORDER BY created_at DESC
+    LIMIT 50
+  `).all();
+
+  return {
     failed_payments: total?.n ?? 0,
     recovered_payments: recovered?.n ?? 0,
-    recovered_amount_minor: amount?.n ?? 0
-  });
+    recovered_amount_minor: amount?.n ?? 0,
+    rows: rows.results ?? []
+  };
+}
+
+function dashboardHtml(data: any) {
+  const currency = (value: number, code: string | null) =>
+    `${((value || 0) / 100).toFixed(2)} ${(code || "usd").toUpperCase()}`;
+
+  const rows = data.rows.map((r: any) => `
+    <tr>
+      <td>${escapeHtml(r.customer_email || "Unknown customer")}</td>
+      <td>${currency(r.amount, r.currency)}</td>
+      <td>${escapeHtml(r.failure_code || "—")}</td>
+      <td>${escapeHtml(r.created_at || "")}</td>
+      <td><span class="badge ${r.recovered_at ? "good" : "open"}">${r.recovered_at ? "Recovered" : "Needs recovery"}</span></td>
+    </tr>
+  `).join("");
+
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payment Rescue</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b0d12;color:#f5f7fb;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:1180px;margin:0 auto;padding:42px 24px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:34px}.brand{font-size:24px;font-weight:800;letter-spacing:-.5px}.brand span{color:#8b7cff}.sub{color:#8d95a7;font-size:14px;margin-top:5px}.btn{border:1px solid #2b3040;background:#151924;color:#fff;padding:10px 14px;border-radius:9px;text-decoration:none;font-size:14px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}.card{background:#121620;border:1px solid #242a38;border-radius:14px;padding:22px}.label{color:#8d95a7;font-size:13px}.value{font-size:32px;font-weight:750;margin-top:8px}.tablecard{background:#121620;border:1px solid #242a38;border-radius:14px;overflow:hidden}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px 18px;border-bottom:1px solid #242a38;font-size:13px}th{color:#8d95a7;font-weight:600;background:#10131b}td{color:#e9ecf3}.badge{display:inline-block;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:700}.open{background:#2a2415;color:#f5c86a}.good{background:#14271d;color:#78d69b}.empty{padding:50px;text-align:center;color:#8d95a7}@media(max-width:800px){.grid{grid-template-columns:1fr}table{font-size:12px}th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4){display:none}}
+</style></head><body><main>
+<div class="top"><div><div class="brand"><span>Payment</span> Rescue</div><div class="sub">Recover failed subscription payments before they become churn.</div></div><a class="btn" href="/dashboard">Refresh</a></div>
+<div class="grid">
+<div class="card"><div class="label">Failed payments</div><div class="value">${data.failed_payments}</div></div>
+<div class="card"><div class="label">Recovered payments</div><div class="value">${data.recovered_payments}</div></div>
+<div class="card"><div class="label">Recovered revenue</div><div class="value">${currency(data.recovered_amount_minor,"usd")}</div></div>
+</div>
+<div class="tablecard"><table><thead><tr><th>Customer</th><th>Amount</th><th>Failure</th><th>Received</th><th>Status</th></tr></thead><tbody>
+${rows || `<tr><td colspan="5"><div class="empty">No failed payments yet.</div></td></tr>`}
+</tbody></table></div>
+</main></body></html>`;
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", "\"": "&quot;"
+  }[char] || char));
 }
 
 export default {
@@ -98,7 +144,12 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/dashboard") {
-      return dashboard(env);
+      const data = await dashboardData(env);
+      return new Response(dashboardHtml(data), { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/dashboard") {
+      return json(await dashboardData(env));
     }
 
     if (request.method === "POST" && url.pathname === "/webhook") {
