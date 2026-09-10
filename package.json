@@ -1,0 +1,13 @@
+{
+  "name": "payment-rescue-mvp",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.33.1",
+    "typescript": "^5.0.0"
+  }
+}

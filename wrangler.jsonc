@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "payment-rescue-mvp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-10",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "payment-rescue-db",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+  "secrets": {
+    "required": ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]
+  }
+}
